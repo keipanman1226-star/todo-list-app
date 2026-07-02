@@ -25,6 +25,7 @@ function migrateTask(task) {
     id: task.id,
     title: task.title,
     deadline: task.deadline || "",
+    deadlineTime: task.deadlineTime || "", // 新しく追加した項目。無ければ「時刻指定なし」扱い
     priority: task.priority || "medium",
     category: task.category || "other", // 新しく追加した項目。無ければ「その他」扱い
     done: !!task.done,
@@ -74,6 +75,7 @@ let currentFilter = "all";
 const taskForm = document.getElementById("task-form");
 const taskInput = document.getElementById("task-input");
 const deadlineInput = document.getElementById("deadline-input");
+const deadlineTimeInput = document.getElementById("deadline-time-input");
 const priorityInput = document.getElementById("priority-input");
 const categoryInput = document.getElementById("category-input");
 const submitBtn = document.getElementById("submit-btn");
@@ -134,6 +136,8 @@ taskForm.addEventListener("submit", (event) => {
   }
 
   const deadline = deadlineInput.value; // 未入力なら空文字 ""
+  // 期限の日付が未入力なら、時刻だけ入っていても意味がないので空にする
+  const deadlineTime = deadline ? deadlineTimeInput.value : "";
   const priority = priorityInput.value; // "high" | "medium" | "low"
   const category = categoryInput.value; // "study" | "job" | "parttime" | "private" | "other"
 
@@ -143,6 +147,7 @@ taskForm.addEventListener("submit", (event) => {
       id: Date.now().toString(), // 現在時刻を文字列にして、簡易的なユニークIDにする
       title,
       deadline,
+      deadlineTime,
       priority,
       category,
       done: false,
@@ -154,6 +159,7 @@ taskForm.addEventListener("submit", (event) => {
     if (target) {
       target.title = title;
       target.deadline = deadline;
+      target.deadlineTime = deadlineTime;
       target.priority = priority;
       target.category = category;
     }
@@ -180,6 +186,7 @@ function startEditing(id) {
   editingId = id;
   taskInput.value = task.title;
   deadlineInput.value = task.deadline;
+  deadlineTimeInput.value = task.deadlineTime;
   priorityInput.value = task.priority;
   categoryInput.value = task.category;
 
@@ -273,34 +280,50 @@ function getDaysUntil(deadline) {
 
 /**
  * 期限が過ぎている（＝期限切れ）かどうかを判定する
+ * 時刻まで指定されている場合は、日付が今日のときだけ時刻もチェックする
+ * （明日以降の期限は日付だけで判断すれば十分なため）
  */
 function isOverdue(task) {
   if (!task.deadline) return false;
-  return getDaysUntil(task.deadline) < 0;
+
+  const days = getDaysUntil(task.deadline);
+  if (days < 0) return true;
+  if (days > 0) return false;
+
+  // ここに来るのは「期限の日付が今日」のケース
+  if (!task.deadlineTime) return false; // 時刻指定が無ければ、今日中はまだ期限内とみなす
+
+  const [hour, minute] = task.deadlineTime.split(":").map(Number);
+  const deadlineMoment = new Date();
+  deadlineMoment.setHours(hour, minute, 0, 0);
+  return new Date() > deadlineMoment;
 }
 
 /**
  * 期限の緊急度に応じたCSSクラス名を返す
  * （期限切れ＝赤、3日以内＝オレンジ、それ以外＝青）
  */
-function getDeadlineUrgencyClass(deadline) {
-  const days = getDaysUntil(deadline);
-  if (days < 0) return "deadline-overdue";
+function getDeadlineUrgencyClass(task) {
+  if (isOverdue(task)) return "deadline-overdue";
+  const days = getDaysUntil(task.deadline);
   if (days <= 3) return "deadline-soon";
   return "deadline-normal";
 }
 
 /**
  * 期限を画面表示用の短い文字列に変換する
- * 例: "2026-07-05" → "07/05（あと3日）"
+ * 例: "2026-07-05" 18:00 → "07/05 18:00（あと3日）"
+ * 時刻が指定されていなければ従来通り日付のみを表示する
  * 期限切れの場合は、はっきり分かるように「期限切れ」と表示する
  */
-function formatDeadlineLabel(deadline) {
-  const days = getDaysUntil(deadline);
-  const [, month, day] = deadline.split("-");
-  const dateLabel = `${month}/${day}`;
+function formatDeadlineLabel(task) {
+  const days = getDaysUntil(task.deadline);
+  const [, month, day] = task.deadline.split("-");
+  const dateLabel = task.deadlineTime
+    ? `${month}/${day} ${task.deadlineTime}`
+    : `${month}/${day}`;
 
-  if (days < 0) {
+  if (isOverdue(task)) {
     return `${dateLabel}（期限切れ）`;
   }
   if (days === 0) {
@@ -362,6 +385,15 @@ function getSortedTasks(taskArray) {
       return a.deadline < b.deadline ? -1 : 1;
     }
 
+    // (3.5) 日付が同じ場合は時刻で比較する（時刻未指定は「23:59」扱いで最後に回す）
+    if (aHasDeadline && bHasDeadline) {
+      const aTime = a.deadlineTime || "23:59";
+      const bTime = b.deadlineTime || "23:59";
+      if (aTime !== bTime) {
+        return aTime < bTime ? -1 : 1;
+      }
+    }
+
     // (4) 優先度で比較
     return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
   });
@@ -412,9 +444,9 @@ function createTaskElement(task) {
   // 期限のタグ（期限が設定されている場合のみ表示）
   if (task.deadline) {
     const deadlineTag = document.createElement("span");
-    const urgencyClass = getDeadlineUrgencyClass(task.deadline);
+    const urgencyClass = getDeadlineUrgencyClass(task);
     deadlineTag.className = `task-tag deadline-tag ${urgencyClass}`;
-    deadlineTag.textContent = formatDeadlineLabel(task.deadline);
+    deadlineTag.textContent = formatDeadlineLabel(task);
     meta.appendChild(deadlineTag);
   }
 

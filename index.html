@@ -93,8 +93,11 @@
       />
 
       <div class="task-form-row">
-        <!-- 期限（日付）の入力欄。任意項目 -->
-        <input type="date" id="deadline-input" class="deadline-input" />
+        <!-- 期限（日付＋時刻）の入力欄。どちらも任意項目 -->
+        <div class="deadline-group">
+          <input type="date" id="deadline-input" class="deadline-input" />
+          <input type="time" id="deadline-time-input" class="deadline-time-input" />
+        </div>
 
         <!-- 優先度の選択欄 -->
         <select id="priority-input" class="priority-input">

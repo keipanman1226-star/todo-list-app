@@ -261,10 +261,31 @@ body {
   margin-bottom: 10px;
 }
 
-.deadline-input,
+/* 期限の日付＋時刻をひとまとまりにするグループ */
+.deadline-group {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.deadline-input {
+  flex: 1 1 130px;
+}
+
+.deadline-time-input {
+  flex: 1 1 90px;
+}
+
 .priority-input,
 .category-input {
   flex: 1 1 120px;
+}
+
+.deadline-input,
+.deadline-time-input,
+.priority-input,
+.category-input {
   padding: 10px;
   font-size: 14px;
   border: 1px solid var(--border-color);
