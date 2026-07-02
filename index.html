@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <!-- スマホでの表示崩れを防ぐための設定 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>To-Do リスト</title>
+
+  <!-- PWA対応：ホーム画面に追加してアプリのように使えるようにする設定 -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#4a6cf7" />
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="To-Do" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ヘッダー部分（タイトル） -->
+    <header class="header">
+      <h1>📝 To-Do リスト</h1>
+    </header>
+
+    <!-- ダッシュボード（進捗状況・今日のタスクをまとめて表示） -->
+    <section class="dashboard">
+      <!-- 進捗カード -->
+      <div id="progress-card" class="card progress-card">
+        <div class="card-title">進捗状況</div>
+        <div class="progress-numbers">
+          <span id="progress-count">0 / 0 件 完了</span>
+          <span id="progress-percent">0%</span>
+        </div>
+        <div class="progress-bar-track">
+          <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- 今日のタスクカード -->
+      <div id="today-card" class="card today-card">
+        <div class="card-title">今日のタスク</div>
+        <ul id="today-task-list" class="task-list"></ul>
+        <p id="today-empty-message" class="empty-message-small" hidden>
+          今日期限のタスクはありません。
+        </p>
+      </div>
+    </section>
+
+    <!-- タスク追加・編集フォーム（共通） -->
+    <form id="task-form" class="task-form">
+      <!-- タスク名の入力欄 -->
+      <input
+        type="text"
+        id="task-input"
+        class="task-input"
+        placeholder="タスクを入力..."
+        required
+      />
+
+      <div class="task-form-row">
+        <!-- 期限（日付）の入力欄。任意項目 -->
+        <input type="date" id="deadline-input" class="deadline-input" />
+
+        <!-- 優先度の選択欄 -->
+        <select id="priority-input" class="priority-input">
+          <option value="high">優先度：高</option>
+          <option value="medium" selected>優先度：中</option>
+          <option value="low">優先度：低</option>
+        </select>
+
+        <!-- カテゴリーの選択欄 -->
+        <select id="category-input" class="category-input">
+          <option value="study">勉強</option>
+          <option value="job">就活</option>
+          <option value="parttime">アルバイト</option>
+          <option value="private">プライベート</option>
+          <option value="other" selected>その他</option>
+        </select>
+      </div>
+
+      <div class="task-form-buttons">
+        <button type="submit" id="submit-btn" class="add-btn">追加</button>
+        <!-- 編集中だけ表示するキャンセルボタン -->
+        <button type="button" id="cancel-edit-btn" class="cancel-btn" hidden>
+          キャンセル
+        </button>
+      </div>
+    </form>
+
+    <!-- 検索・フィルターの行 -->
+    <section class="filter-row">
+      <!-- タスク名で検索する入力欄 -->
+      <input
+        type="text"
+        id="search-input"
+        class="search-input"
+        placeholder="🔍 タスクを検索..."
+      />
+
+      <!-- 表示するタスクを絞り込むボタン（すべて／未完了／完了済み） -->
+      <div class="filter-buttons" id="filter-buttons">
+        <button type="button" class="filter-btn active" data-filter="all">すべて</button>
+        <button type="button" class="filter-btn" data-filter="todo">未完了</button>
+        <button type="button" class="filter-btn" data-filter="done">完了済み</button>
+      </div>
+    </section>
+
+    <!-- タスク一覧を表示する場所（JavaScriptで中身を作る） -->
+    <ul id="task-list" class="task-list"></ul>
+
+    <!-- タスクが1件もないときに表示するメッセージ -->
+    <p id="empty-message" class="empty-message" hidden>
+      タスクがありません。上のフォームから追加してください。
+    </p>
+  </div>
+
+  <!-- JavaScriptファイルの読み込み（bodyの一番最後に置くのが基本） -->
+  <script src="script.js"></script>
+
+  <!-- サービスワーカーの登録（対応ブラウザだけで実行、オフライン対応用） -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js");
+      });
+    }
+  </script>
+</body>
+</html>

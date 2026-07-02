@@ -1,0 +1,520 @@
+/* ==========================================================
+   To-Do リスト アプリ本体（script.js）
+   --------------------------------------------------------
+   このファイル1つで「タスクの管理」「画面への表示」
+   「ローカルストレージへの保存」をすべて行っています。
+   上から順番に読んでいけば処理の流れがわかるように
+   なるべく分かりやすい構成にしています。
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   1. データを保存する場所（localStorage）の設定
+   ---------------------------------------------------------- */
+
+// localStorageに保存するときの「鍵（キー）」の名前
+// この名前でブラウザにデータを保存・読み込みする
+const STORAGE_KEY = "todo-list-tasks";
+
+/**
+ * 古い形式のタスクを新しい形式に変換する関数
+ * 例: カテゴリー機能を追加する前に保存されたタスクには category が無いので、
+ *     「その他」を補って壊れたデータにならないようにする
+ */
+function migrateTask(task) {
+  return {
+    id: task.id,
+    title: task.title,
+    deadline: task.deadline || "",
+    priority: task.priority || "medium",
+    category: task.category || "other", // 新しく追加した項目。無ければ「その他」扱い
+    done: !!task.done,
+  };
+}
+
+/**
+ * タスクの配列をlocalStorageから読み込む関数
+ * まだ何も保存されていない場合は、空の配列を返す
+ */
+function loadTasks() {
+  const json = localStorage.getItem(STORAGE_KEY);
+  if (!json) {
+    return []; // 保存データがなければ空リストからスタート
+  }
+  try {
+    const rawTasks = JSON.parse(json);
+    return rawTasks.map(migrateTask); // 読み込むたびに必ず新しい形式に揃える
+  } catch (error) {
+    // 万が一データが壊れていた場合も、アプリが止まらないようにする
+    console.error("タスクデータの読み込みに失敗しました", error);
+    return [];
+  }
+}
+
+/**
+ * タスクの配列をlocalStorageに保存する関数
+ */
+function saveTasks(tasks) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+// アプリ起動時に、保存されているタスクを読み込んでおく
+// （これがこのアプリの「現在のタスク一覧」の実体になる）
+let tasks = loadTasks();
+
+// 現在編集中のタスクのID。編集していないときは null
+let editingId = null;
+
+// 現在選択されているステータスフィルター（"all" | "todo" | "done"）
+let currentFilter = "all";
+
+/* ----------------------------------------------------------
+   2. 画面の部品（HTML要素）を取得しておく
+   ---------------------------------------------------------- */
+
+const taskForm = document.getElementById("task-form");
+const taskInput = document.getElementById("task-input");
+const deadlineInput = document.getElementById("deadline-input");
+const priorityInput = document.getElementById("priority-input");
+const categoryInput = document.getElementById("category-input");
+const submitBtn = document.getElementById("submit-btn");
+const cancelEditBtn = document.getElementById("cancel-edit-btn");
+
+const taskListEl = document.getElementById("task-list");
+const emptyMessageEl = document.getElementById("empty-message");
+
+const searchInput = document.getElementById("search-input");
+const filterButtonsEl = document.getElementById("filter-buttons");
+
+const progressCountEl = document.getElementById("progress-count");
+const progressPercentEl = document.getElementById("progress-percent");
+const progressBarFillEl = document.getElementById("progress-bar-fill");
+
+const todayTaskListEl = document.getElementById("today-task-list");
+const todayEmptyMessageEl = document.getElementById("today-empty-message");
+
+/* ----------------------------------------------------------
+   3. 優先度・カテゴリーの並び順や表示ラベルの設定
+   ---------------------------------------------------------- */
+
+// 優先度を「高→中→低」の順に並べたいので、数字の小ささで比較する
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+
+// 優先度の表示ラベル（日本語）
+const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
+
+// カテゴリーの表示ラベル（日本語）
+const CATEGORY_LABELS = {
+  study: "勉強",
+  job: "就活",
+  parttime: "アルバイト",
+  private: "プライベート",
+  other: "その他",
+};
+
+/* ----------------------------------------------------------
+   4. タスクの追加・編集処理（フォームの送信）
+   ---------------------------------------------------------- */
+
+// フォームが送信されたとき（「追加」または「更新」ボタンが押されたとき）の処理
+taskForm.addEventListener("submit", (event) => {
+  // フォーム送信時のページ再読み込みを止める（SPAなので必須）
+  event.preventDefault();
+
+  const title = taskInput.value.trim(); // 前後の余計な空白を削除
+  if (title === "") {
+    return; // 空のタスクは追加しない
+  }
+
+  const deadline = deadlineInput.value; // 未入力なら空文字 ""
+  const priority = priorityInput.value; // "high" | "medium" | "low"
+  const category = categoryInput.value; // "study" | "job" | "parttime" | "private" | "other"
+
+  if (editingId === null) {
+    // --- 新規追加モード ---
+    const newTask = {
+      id: Date.now().toString(), // 現在時刻を文字列にして、簡易的なユニークIDにする
+      title,
+      deadline,
+      priority,
+      category,
+      done: false,
+    };
+    tasks.push(newTask);
+  } else {
+    // --- 編集モード：該当タスクの内容だけを書き換える ---
+    const target = tasks.find((t) => t.id === editingId);
+    if (target) {
+      target.title = title;
+      target.deadline = deadline;
+      target.priority = priority;
+      target.category = category;
+    }
+    stopEditing(); // 編集モードを終了してフォームを通常表示に戻す
+  }
+
+  saveTasks(tasks);
+  renderTasks();
+
+  // フォームをリセットして、次のタスクを入力しやすくする
+  taskForm.reset();
+  priorityInput.value = "medium"; // 優先度は「中」に戻しておく
+  categoryInput.value = "other"; // カテゴリーは「その他」に戻しておく
+  taskInput.focus();
+});
+
+/**
+ * 指定したタスクの内容をフォームに読み込み、編集モードに入る
+ */
+function startEditing(id) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+
+  editingId = id;
+  taskInput.value = task.title;
+  deadlineInput.value = task.deadline;
+  priorityInput.value = task.priority;
+  categoryInput.value = task.category;
+
+  submitBtn.textContent = "更新";
+  cancelEditBtn.hidden = false;
+
+  // フォームが画面外にあってもすぐ見えるようにスクロールする
+  taskForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  taskInput.focus();
+}
+
+/**
+ * 編集モードを終了し、フォームを新規追加用の見た目に戻す
+ */
+function stopEditing() {
+  editingId = null;
+  submitBtn.textContent = "追加";
+  cancelEditBtn.hidden = true;
+}
+
+// 「キャンセル」ボタンが押されたら、入力内容を破棄して編集モードを終了する
+cancelEditBtn.addEventListener("click", () => {
+  stopEditing();
+  taskForm.reset();
+  priorityInput.value = "medium";
+  categoryInput.value = "other";
+});
+
+/* ----------------------------------------------------------
+   5. タスクの完了切り替え・削除処理
+   ---------------------------------------------------------- */
+
+/**
+ * 指定したIDのタスクの「完了/未完了」を切り替える
+ */
+function toggleTaskDone(id) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.done = !task.done;
+  saveTasks(tasks);
+  renderTasks();
+}
+
+/**
+ * 指定したIDのタスクを削除する
+ */
+function deleteTask(id) {
+  // 削除前に確認ダイアログを出して、誤操作を防ぐ
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+
+  const confirmed = confirm(`「${task.title}」を削除しますか？`);
+  if (!confirmed) return;
+
+  // 編集中のタスクを削除した場合は、編集モードも解除しておく
+  if (editingId === id) {
+    stopEditing();
+    taskForm.reset();
+  }
+
+  tasks = tasks.filter((t) => t.id !== id);
+  saveTasks(tasks);
+  renderTasks();
+}
+
+/* ----------------------------------------------------------
+   6. 期限に関する表示ヘルパー
+   ---------------------------------------------------------- */
+
+/**
+ * 今日の日付を "YYYY-MM-DD" の形式で取得する
+ * date input の値と文字列で比較するために使う
+ */
+function getTodayString() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * 期限の日付から、あと何日かを計算する（マイナスなら期限切れ）
+ */
+function getDaysUntil(deadline) {
+  const today = new Date(getTodayString());
+  const target = new Date(deadline);
+  const diffMs = target.getTime() - today.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * 期限が過ぎている（＝期限切れ）かどうかを判定する
+ */
+function isOverdue(task) {
+  if (!task.deadline) return false;
+  return getDaysUntil(task.deadline) < 0;
+}
+
+/**
+ * 期限の緊急度に応じたCSSクラス名を返す
+ * （期限切れ＝赤、3日以内＝オレンジ、それ以外＝青）
+ */
+function getDeadlineUrgencyClass(deadline) {
+  const days = getDaysUntil(deadline);
+  if (days < 0) return "deadline-overdue";
+  if (days <= 3) return "deadline-soon";
+  return "deadline-normal";
+}
+
+/**
+ * 期限を画面表示用の短い文字列に変換する
+ * 例: "2026-07-05" → "07/05（あと3日）"
+ * 期限切れの場合は、はっきり分かるように「期限切れ」と表示する
+ */
+function formatDeadlineLabel(deadline) {
+  const days = getDaysUntil(deadline);
+  const [, month, day] = deadline.split("-");
+  const dateLabel = `${month}/${day}`;
+
+  if (days < 0) {
+    return `${dateLabel}（期限切れ）`;
+  }
+  if (days === 0) {
+    return `${dateLabel}（今日まで）`;
+  }
+  return `${dateLabel}（あと${days}日）`;
+}
+
+/* ----------------------------------------------------------
+   7. タスクの絞り込み・並び替え
+   ---------------------------------------------------------- */
+
+/**
+ * ステータスフィルター（すべて／未完了／完了済み）と検索文字列で
+ * タスクを絞り込む
+ */
+function getFilteredTasks(taskArray) {
+  const keyword = searchInput.value.trim().toLowerCase();
+
+  return taskArray.filter((task) => {
+    // ステータスでの絞り込み
+    if (currentFilter === "todo" && task.done) return false;
+    if (currentFilter === "done" && !task.done) return false;
+
+    // タスク名での絞り込み（部分一致・大文字小文字を区別しない）
+    if (keyword !== "" && !task.title.toLowerCase().includes(keyword)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+/**
+ * タスクを「期限が近い順」に並び替える
+ * ルール:
+ *   1. 未完了のタスクを、完了済みタスクより先に表示する
+ *   2. 期限が設定されているタスクを、期限なしタスクより先に表示する
+ *   3. 期限が近い順に並べる
+ *   4. 期限が同じ場合は、優先度が高い順に並べる
+ */
+function getSortedTasks(taskArray) {
+  // 元の配列を壊さないように、コピーしてから並び替える
+  return [...taskArray].sort((a, b) => {
+    // (1) 完了状態で比較
+    if (a.done !== b.done) {
+      return a.done ? 1 : -1;
+    }
+
+    // (2) 期限の有無で比較（期限なしは後ろへ）
+    const aHasDeadline = a.deadline !== "";
+    const bHasDeadline = b.deadline !== "";
+    if (aHasDeadline !== bHasDeadline) {
+      return aHasDeadline ? -1 : 1;
+    }
+
+    // (3) 期限の日付で比較（両方とも期限ありの場合のみ）
+    if (aHasDeadline && bHasDeadline && a.deadline !== b.deadline) {
+      return a.deadline < b.deadline ? -1 : 1;
+    }
+
+    // (4) 優先度で比較
+    return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+  });
+}
+
+/* ----------------------------------------------------------
+   8. 画面への描画
+   ---------------------------------------------------------- */
+
+/**
+ * 1件のタスクから、画面に表示する <li> 要素を作る
+ * （タスク一覧・今日のタスク欄のどちらからも呼び出される共通部品）
+ */
+function createTaskElement(task) {
+  const li = document.createElement("li");
+  li.className = `task-item priority-${task.priority}`;
+  if (task.done) {
+    li.classList.add("done");
+  }
+  if (!task.done && isOverdue(task)) {
+    li.classList.add("overdue"); // 期限切れタスクをカード全体で赤く強調する
+  }
+
+  // --- 完了チェックボックス ---
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "task-checkbox";
+  checkbox.checked = task.done;
+  checkbox.addEventListener("change", () => toggleTaskDone(task.id));
+
+  // --- タスク名 + タグ類をまとめるブロック ---
+  const main = document.createElement("div");
+  main.className = "task-main";
+
+  const title = document.createElement("div");
+  title.className = "task-title";
+  title.textContent = task.title;
+
+  const meta = document.createElement("div");
+  meta.className = "task-meta";
+
+  // カテゴリーのタグ
+  const categoryTag = document.createElement("span");
+  categoryTag.className = `task-tag category-tag-${task.category}`;
+  categoryTag.textContent = CATEGORY_LABELS[task.category];
+  meta.appendChild(categoryTag);
+
+  // 期限のタグ（期限が設定されている場合のみ表示）
+  if (task.deadline) {
+    const deadlineTag = document.createElement("span");
+    const urgencyClass = getDeadlineUrgencyClass(task.deadline);
+    deadlineTag.className = `task-tag deadline-tag ${urgencyClass}`;
+    deadlineTag.textContent = formatDeadlineLabel(task.deadline);
+    meta.appendChild(deadlineTag);
+  }
+
+  // 優先度のタグ
+  const priorityTag = document.createElement("span");
+  priorityTag.className = `task-tag priority-tag-${task.priority}`;
+  priorityTag.textContent = `優先度: ${PRIORITY_LABELS[task.priority]}`;
+  meta.appendChild(priorityTag);
+
+  main.appendChild(title);
+  main.appendChild(meta);
+
+  // --- 編集ボタン ---
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "edit-btn";
+  editBtn.textContent = "✎";
+  editBtn.setAttribute("aria-label", "タスクを編集");
+  editBtn.addEventListener("click", () => startEditing(task.id));
+
+  // --- 削除ボタン ---
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "delete-btn";
+  deleteBtn.textContent = "✕";
+  deleteBtn.setAttribute("aria-label", "タスクを削除");
+  deleteBtn.addEventListener("click", () => deleteTask(task.id));
+
+  li.appendChild(checkbox);
+  li.appendChild(main);
+  li.appendChild(editBtn);
+  li.appendChild(deleteBtn);
+
+  return li;
+}
+
+/**
+ * タスクの配列を、指定した<ul>要素の中に描画する
+ * （タスク一覧・今日のタスク欄で共通して使う）
+ */
+function renderTaskListInto(containerEl, taskArray) {
+  containerEl.innerHTML = ""; // 一度空にしてから、作り直す（シンプルな実装）
+  taskArray.forEach((task) => {
+    containerEl.appendChild(createTaskElement(task));
+  });
+}
+
+/**
+ * 進捗カード（完了数／総数・進捗率・進捗バー）を更新する
+ */
+function renderProgress() {
+  const total = tasks.length;
+  const doneCount = tasks.filter((task) => task.done).length;
+  const percent = total === 0 ? 0 : Math.round((doneCount / total) * 100);
+
+  progressCountEl.textContent = `${doneCount} / ${total} 件 完了`;
+  progressPercentEl.textContent = `${percent}%`;
+  progressBarFillEl.style.width = `${percent}%`;
+}
+
+/**
+ * 今日のタスク欄を更新する
+ */
+function renderTodayTasks() {
+  const today = getTodayString();
+  const todaysTasks = getSortedTasks(tasks.filter((task) => task.deadline === today));
+
+  renderTaskListInto(todayTaskListEl, todaysTasks);
+  todayEmptyMessageEl.hidden = todaysTasks.length > 0;
+}
+
+/**
+ * タスク一覧を画面に描画する（データが変わるたびに呼び出す）
+ */
+function renderTasks() {
+  const filteredTasks = getFilteredTasks(tasks);
+  const sortedTasks = getSortedTasks(filteredTasks);
+
+  renderTaskListInto(taskListEl, sortedTasks);
+
+  // タスクが1件も表示されないときは案内メッセージを表示する
+  emptyMessageEl.hidden = sortedTasks.length > 0;
+
+  renderProgress();
+  renderTodayTasks();
+}
+
+/* ----------------------------------------------------------
+   9. イベント登録・初期表示
+   ---------------------------------------------------------- */
+
+// 検索欄に文字が入力されるたびに、絞り込みをやり直す
+searchInput.addEventListener("input", renderTasks);
+
+// フィルターボタン（すべて／未完了／完了済み）のクリック処理
+filterButtonsEl.addEventListener("click", (event) => {
+  const button = event.target.closest(".filter-btn");
+  if (!button) return;
+
+  currentFilter = button.dataset.filter;
+
+  // 選択中のボタンだけに active クラスを付ける
+  filterButtonsEl.querySelectorAll(".filter-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn === button);
+  });
+
+  renderTasks();
+});
+
+// ページを開いたときに、保存されているタスクを画面に表示する
+renderTasks();
