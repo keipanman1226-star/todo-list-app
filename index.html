@@ -37,120 +37,154 @@
       </button>
     </header>
 
-    <!-- 統計タイル（総数・未完了・完了・進捗率） -->
-    <section class="stat-grid">
-      <div class="card stat-tile">
-        <div class="stat-label">総タスク数</div>
-        <div id="stat-total" class="stat-value">0</div>
+    <!-- 画面切り替えタブ（クリックでも切替できる、現在位置のインジケーターも兼ねる） -->
+    <div class="screen-tabs" id="screen-tabs" role="tablist">
+      <button type="button" class="screen-tab active" data-screen="0" role="tab" aria-selected="true">
+        リスト
+      </button>
+      <button type="button" class="screen-tab" data-screen="1" role="tab" aria-selected="false">
+        今日やること
+      </button>
+    </div>
+
+    <!-- 左右スワイプで切り替わる2画面（画面1: リスト全体 / 画面2: 今日やること） -->
+    <div class="swipe-viewport" id="swipe-viewport">
+      <div class="swipe-track" id="swipe-track">
+
+        <!-- 画面1: 現在のTo-Doリスト（ダッシュボード＋全タスク） -->
+        <section class="swipe-screen" data-screen="0">
+          <!-- 統計タイル（総数・未完了・完了・進捗率） -->
+          <section class="stat-grid">
+            <div class="card stat-tile">
+              <div class="stat-label">総タスク数</div>
+              <div id="stat-total" class="stat-value">0</div>
+            </div>
+            <div class="card stat-tile">
+              <div class="stat-label">未完了</div>
+              <div id="stat-todo" class="stat-value stat-value-todo">0</div>
+            </div>
+            <div class="card stat-tile">
+              <div class="stat-label">完了</div>
+              <div id="stat-done" class="stat-value stat-value-done">0</div>
+            </div>
+            <div class="card stat-tile">
+              <div class="stat-label">進捗率</div>
+              <div id="stat-percent" class="stat-value stat-value-accent">0%</div>
+              <div class="progress-bar-track">
+                <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ダッシュボード（今日のタスク・カテゴリー別集計） -->
+          <section class="dashboard">
+            <!-- 今日のタスクカード（期限が今日のタスクを自動表示） -->
+            <div id="today-card" class="card today-card">
+              <div class="card-title">今日のタスク</div>
+              <ul id="today-task-list" class="task-list"></ul>
+              <p id="today-empty-message" class="empty-message-small" hidden>
+                今日期限のタスクはありません。
+              </p>
+            </div>
+
+            <!-- カテゴリー別集計カード -->
+            <div id="category-breakdown-card" class="card">
+              <div class="card-title">カテゴリー別集計</div>
+              <div id="category-breakdown-list" class="bar-list"></div>
+              <p id="category-breakdown-empty" class="empty-message-small" hidden>
+                タスクがありません。
+              </p>
+            </div>
+          </section>
+
+          <!-- タスク追加・編集フォーム（共通） -->
+          <form id="task-form" class="task-form">
+            <!-- タスク名の入力欄 -->
+            <input
+              type="text"
+              id="task-input"
+              class="task-input"
+              placeholder="タスクを入力..."
+              required
+            />
+
+            <div class="task-form-row">
+              <!-- 期限（日付＋時刻）の入力欄。どちらも任意項目 -->
+              <div class="deadline-group">
+                <input type="date" id="deadline-input" class="deadline-input" />
+                <input type="time" id="deadline-time-input" class="deadline-time-input" />
+              </div>
+
+              <!-- 優先度の選択欄 -->
+              <select id="priority-input" class="priority-input">
+                <option value="high">優先度：高</option>
+                <option value="medium" selected>優先度：中</option>
+                <option value="low">優先度：低</option>
+              </select>
+
+              <!-- カテゴリーの選択欄 -->
+              <select id="category-input" class="category-input">
+                <option value="job">就活</option>
+                <option value="study">勉強</option>
+                <option value="university">大学</option>
+                <option value="parttime">アルバイト</option>
+                <option value="private">プライベート</option>
+                <option value="other" selected>その他</option>
+              </select>
+            </div>
+
+            <div class="task-form-buttons">
+              <button type="submit" id="submit-btn" class="add-btn">追加</button>
+              <!-- 編集中だけ表示するキャンセルボタン -->
+              <button type="button" id="cancel-edit-btn" class="cancel-btn" hidden>
+                キャンセル
+              </button>
+            </div>
+          </form>
+
+          <!-- 検索・フィルターの行 -->
+          <section class="filter-row">
+            <!-- タスク名で検索する入力欄 -->
+            <input
+              type="text"
+              id="search-input"
+              class="search-input"
+              placeholder="🔍 タスクを検索..."
+            />
+
+            <!-- 表示するタスクを絞り込むボタン（すべて／未完了／完了済み） -->
+            <div class="filter-buttons" id="filter-buttons">
+              <button type="button" class="filter-btn active" data-filter="all">すべて</button>
+              <button type="button" class="filter-btn" data-filter="todo">未完了</button>
+              <button type="button" class="filter-btn" data-filter="done">完了済み</button>
+            </div>
+          </section>
+
+          <!-- タスク一覧を表示する場所（JavaScriptで中身を作る） -->
+          <ul id="task-list" class="task-list"></ul>
+
+          <!-- タスクが1件もないときに表示するメッセージ -->
+          <p id="empty-message" class="empty-message" hidden>
+            タスクがありません。上のフォームから追加してください。
+          </p>
+        </section>
+
+        <!-- 画面2: 今日やること（☆ボタンで手動で追加したタスクだけを表示） -->
+        <section class="swipe-screen" data-screen="1">
+          <div class="today-screen-header">
+            <h2>今日やること</h2>
+          </div>
+
+          <ul id="today-screen-task-list" class="task-list"></ul>
+
+          <p id="today-screen-empty-message" class="empty-message" hidden>
+            今日やることはまだありません。<br />
+            リスト画面のタスクにある☆ボタンから追加してください。
+          </p>
+        </section>
+
       </div>
-      <div class="card stat-tile">
-        <div class="stat-label">未完了</div>
-        <div id="stat-todo" class="stat-value stat-value-todo">0</div>
-      </div>
-      <div class="card stat-tile">
-        <div class="stat-label">完了</div>
-        <div id="stat-done" class="stat-value stat-value-done">0</div>
-      </div>
-      <div class="card stat-tile">
-        <div class="stat-label">進捗率</div>
-        <div id="stat-percent" class="stat-value stat-value-accent">0%</div>
-        <div class="progress-bar-track">
-          <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ダッシュボード（今日のタスク・カテゴリー別集計） -->
-    <section class="dashboard">
-      <!-- 今日のタスクカード -->
-      <div id="today-card" class="card today-card">
-        <div class="card-title">今日のタスク</div>
-        <ul id="today-task-list" class="task-list"></ul>
-        <p id="today-empty-message" class="empty-message-small" hidden>
-          今日期限のタスクはありません。
-        </p>
-      </div>
-
-      <!-- カテゴリー別集計カード -->
-      <div id="category-breakdown-card" class="card">
-        <div class="card-title">カテゴリー別集計</div>
-        <div id="category-breakdown-list" class="bar-list"></div>
-        <p id="category-breakdown-empty" class="empty-message-small" hidden>
-          タスクがありません。
-        </p>
-      </div>
-    </section>
-
-    <!-- タスク追加・編集フォーム（共通） -->
-    <form id="task-form" class="task-form">
-      <!-- タスク名の入力欄 -->
-      <input
-        type="text"
-        id="task-input"
-        class="task-input"
-        placeholder="タスクを入力..."
-        required
-      />
-
-      <div class="task-form-row">
-        <!-- 期限（日付＋時刻）の入力欄。どちらも任意項目 -->
-        <div class="deadline-group">
-          <input type="date" id="deadline-input" class="deadline-input" />
-          <input type="time" id="deadline-time-input" class="deadline-time-input" />
-        </div>
-
-        <!-- 優先度の選択欄 -->
-        <select id="priority-input" class="priority-input">
-          <option value="high">優先度：高</option>
-          <option value="medium" selected>優先度：中</option>
-          <option value="low">優先度：低</option>
-        </select>
-
-        <!-- カテゴリーの選択欄 -->
-        <select id="category-input" class="category-input">
-          <option value="job">就活</option>
-          <option value="study">勉強</option>
-          <option value="university">大学</option>
-          <option value="parttime">アルバイト</option>
-          <option value="private">プライベート</option>
-          <option value="other" selected>その他</option>
-        </select>
-      </div>
-
-      <div class="task-form-buttons">
-        <button type="submit" id="submit-btn" class="add-btn">追加</button>
-        <!-- 編集中だけ表示するキャンセルボタン -->
-        <button type="button" id="cancel-edit-btn" class="cancel-btn" hidden>
-          キャンセル
-        </button>
-      </div>
-    </form>
-
-    <!-- 検索・フィルターの行 -->
-    <section class="filter-row">
-      <!-- タスク名で検索する入力欄 -->
-      <input
-        type="text"
-        id="search-input"
-        class="search-input"
-        placeholder="🔍 タスクを検索..."
-      />
-
-      <!-- 表示するタスクを絞り込むボタン（すべて／未完了／完了済み） -->
-      <div class="filter-buttons" id="filter-buttons">
-        <button type="button" class="filter-btn active" data-filter="all">すべて</button>
-        <button type="button" class="filter-btn" data-filter="todo">未完了</button>
-        <button type="button" class="filter-btn" data-filter="done">完了済み</button>
-      </div>
-    </section>
-
-    <!-- タスク一覧を表示する場所（JavaScriptで中身を作る） -->
-    <ul id="task-list" class="task-list"></ul>
-
-    <!-- タスクが1件もないときに表示するメッセージ -->
-    <p id="empty-message" class="empty-message" hidden>
-      タスクがありません。上のフォームから追加してください。
-    </p>
+    </div>
   </div>
 
   <!-- JavaScriptファイルの読み込み（bodyの一番最後に置くのが基本） -->

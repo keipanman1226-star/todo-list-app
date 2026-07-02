@@ -99,6 +99,65 @@ body {
   background-color: var(--bg-color);
 }
 
+/* ===============================
+   画面切り替えタブ（リスト／今日やること）
+   タップで画面が切り替わるほか、activeなタブが現在位置のインジケーターを兼ねる
+   =============================== */
+.screen-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.screen-tab {
+  flex: 1;
+  min-width: 0; /* ボタン内の文字幅でタブがはみ出さないようにする */
+  padding: 10px 4px;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--text-sub-color);
+  background-color: var(--card-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.screen-tab.active {
+  color: #fff;
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+/* ===============================
+   左右スワイプで切り替わる2画面
+   =============================== */
+.swipe-viewport {
+  overflow-x: hidden; /* はみ出したもう一方の画面を隠す */
+  width: 100%;
+}
+
+.swipe-track {
+  display: flex;
+  width: 200%; /* 画面2枚分の幅を用意しておく */
+  transition: transform 0.3s ease;
+}
+
+/* 指でドラッグしている間はアニメーションを切り、指の動きに直接追従させる */
+.swipe-track.dragging {
+  transition: none;
+}
+
+.swipe-screen {
+  width: 50%; /* トラックの50% = ビューポート1画面分 */
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.today-screen-header h2 {
+  font-size: 18px;
+  margin: 4px 0 16px;
+}
+
 /* 白いカード共通スタイル（統計タイル・今日のタスクカードなどで使う） */
 .card {
   background-color: var(--card-color);
@@ -514,7 +573,8 @@ body {
   color: #fff;
 }
 
-/* 編集ボタン・削除ボタン共通 */
+/* 「今日やること」への追加トグル・編集ボタン・削除ボタン共通 */
+.today-toggle-btn,
 .edit-btn,
 .delete-btn {
   flex-shrink: 0;
@@ -525,6 +585,16 @@ body {
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 6px;
+}
+
+.today-toggle-btn:hover {
+  background-color: var(--bg-color);
+  color: var(--accent-color);
+}
+
+/* 「今日やること」に追加済みのタスクは★を目立つ色で塗りつぶす */
+.today-toggle-btn.active {
+  color: #f59e0b;
 }
 
 .edit-btn:hover {

@@ -28,6 +28,7 @@ function migrateTask(task) {
     deadlineTime: task.deadlineTime || "", // 新しく追加した項目。無ければ「時刻指定なし」扱い
     priority: task.priority || "medium",
     category: task.category || "other", // 新しく追加した項目。無ければ「その他」扱い
+    todayFlag: !!task.todayFlag, // 「今日やること」に追加されているか。無ければ未追加扱い
     done: !!task.done,
   };
 }
@@ -100,6 +101,12 @@ const categoryBreakdownListEl = document.getElementById("category-breakdown-list
 const categoryBreakdownEmptyEl = document.getElementById("category-breakdown-empty");
 
 const themeToggleBtn = document.getElementById("theme-toggle-btn");
+
+const screenTabsEl = document.getElementById("screen-tabs");
+const swipeViewportEl = document.getElementById("swipe-viewport");
+const swipeTrackEl = document.getElementById("swipe-track");
+const todayScreenTaskListEl = document.getElementById("today-screen-task-list");
+const todayScreenEmptyMessageEl = document.getElementById("today-screen-empty-message");
 
 /* ----------------------------------------------------------
    3. 優先度・カテゴリーの並び順や表示ラベルの設定
@@ -226,6 +233,17 @@ function toggleTaskDone(id) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
   task.done = !task.done;
+  saveTasks(tasks);
+  renderTasks();
+}
+
+/**
+ * 指定したIDのタスクの「今日やることに追加されているか」を切り替える
+ */
+function toggleTodayFlag(id) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.todayFlag = !task.todayFlag;
   saveTasks(tasks);
   renderTasks();
 }
@@ -459,6 +477,20 @@ function createTaskElement(task) {
   main.appendChild(title);
   main.appendChild(meta);
 
+  // --- 「今日やることへ追加」トグルボタン ---
+  const todayToggleBtn = document.createElement("button");
+  todayToggleBtn.type = "button";
+  todayToggleBtn.className = "today-toggle-btn";
+  if (task.todayFlag) {
+    todayToggleBtn.classList.add("active");
+    todayToggleBtn.textContent = "★";
+    todayToggleBtn.setAttribute("aria-label", "今日やることから削除");
+  } else {
+    todayToggleBtn.textContent = "☆";
+    todayToggleBtn.setAttribute("aria-label", "今日やることへ追加");
+  }
+  todayToggleBtn.addEventListener("click", () => toggleTodayFlag(task.id));
+
   // --- 編集ボタン ---
   const editBtn = document.createElement("button");
   editBtn.type = "button";
@@ -477,6 +509,7 @@ function createTaskElement(task) {
 
   li.appendChild(checkbox);
   li.appendChild(main);
+  li.appendChild(todayToggleBtn);
   li.appendChild(editBtn);
   li.appendChild(deleteBtn);
 
@@ -588,6 +621,17 @@ function renderTodayTasks() {
 }
 
 /**
+ * 「今日やること」画面（画面2）を更新する
+ * ☆ボタンで手動で追加したタスクだけを、期限が近い順に表示する
+ */
+function renderTodayScreenTasks() {
+  const todayFlaggedTasks = getSortedTasks(tasks.filter((task) => task.todayFlag));
+
+  renderTaskListInto(todayScreenTaskListEl, todayFlaggedTasks);
+  todayScreenEmptyMessageEl.hidden = todayFlaggedTasks.length > 0;
+}
+
+/**
  * タスク一覧を画面に描画する（データが変わるたびに呼び出す）
  */
 function renderTasks() {
@@ -602,6 +646,7 @@ function renderTasks() {
   renderProgress();
   renderTodayTasks();
   renderCategoryBreakdown();
+  renderTodayScreenTasks();
 }
 
 /* ----------------------------------------------------------
@@ -638,7 +683,107 @@ themeToggleBtn.addEventListener("click", () => {
 applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
 /* ----------------------------------------------------------
-   10. イベント登録・初期表示
+   10. 画面の左右スワイプ切り替え（画面1: リスト / 画面2: 今日やること）
+   ---------------------------------------------------------- */
+
+// 画面の枚数（リスト・今日やること の2枚）
+const SCREEN_COUNT = 2;
+
+// 現在表示中の画面番号（0 または 1）
+let currentScreen = 0;
+
+/**
+ * 指定した画面番号へ切り替える
+ * トラックを transform で動かし、タブの見た目（active・aria-selected）も同期させる
+ */
+function goToScreen(screenIndex) {
+  currentScreen = screenIndex;
+
+  // トラック全体の幅は画面2枚分(200%)なので、1画面分動かすには50%ずつずらせばよい
+  swipeTrackEl.style.transform = `translateX(-${screenIndex * 50}%)`;
+
+  screenTabsEl.querySelectorAll(".screen-tab").forEach((tab) => {
+    const isActive = Number(tab.dataset.screen) === screenIndex;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+// タブをクリックしたときの画面切り替え（スワイプできないPC・マウス環境向け）
+screenTabsEl.addEventListener("click", (event) => {
+  const tab = event.target.closest(".screen-tab");
+  if (!tab) return;
+  goToScreen(Number(tab.dataset.screen));
+});
+
+// --- ここからスマホでの指スワイプ操作 ---
+
+// タッチ開始位置と、現在の移動量・ジェスチャーの向きを覚えておく変数
+let touchStartX = 0;
+let touchStartY = 0;
+let touchDeltaX = 0;
+let swipeDirection = null; // "horizontal" | "vertical" | null(まだ判定前)
+let viewportWidth = 0;
+
+swipeViewportEl.addEventListener(
+  "touchstart",
+  (event) => {
+    const touch = event.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchDeltaX = 0;
+    swipeDirection = null;
+    viewportWidth = swipeViewportEl.clientWidth;
+    swipeTrackEl.classList.add("dragging"); // ドラッグ中はアニメーションを切って指に追従させる
+  },
+  { passive: true }
+);
+
+swipeViewportEl.addEventListener(
+  "touchmove",
+  (event) => {
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+
+    // 最初にある程度動いた時点で、縦スクロールか横スワイプかを一度だけ判定する
+    if (swipeDirection === null && (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8)) {
+      swipeDirection = Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
+    }
+
+    if (swipeDirection === "horizontal") {
+      // 横スワイプ中はページの縦スクロールが起きないようにする
+      event.preventDefault();
+      touchDeltaX = deltaX;
+
+      const basePercent = -currentScreen * 50;
+      const dragPercent = (touchDeltaX / viewportWidth) * 50;
+      swipeTrackEl.style.transform = `translateX(${basePercent + dragPercent}%)`;
+    }
+    // 縦スワイプと判定した場合は何もしない（ブラウザ標準の縦スクロールに任せる）
+  },
+  { passive: false }
+);
+
+swipeViewportEl.addEventListener("touchend", () => {
+  swipeTrackEl.classList.remove("dragging");
+
+  if (swipeDirection === "horizontal") {
+    const threshold = viewportWidth * 0.2; // 画面幅の20%以上動かしたら切り替える
+    if (touchDeltaX <= -threshold && currentScreen < SCREEN_COUNT - 1) {
+      goToScreen(currentScreen + 1);
+    } else if (touchDeltaX >= threshold && currentScreen > 0) {
+      goToScreen(currentScreen - 1);
+    } else {
+      goToScreen(currentScreen); // しきい値未満なら元の画面へスナックバックする
+    }
+  }
+
+  swipeDirection = null;
+});
+
+/* ----------------------------------------------------------
+   11. イベント登録・初期表示
    ---------------------------------------------------------- */
 
 // 検索欄に文字が入力されるたびに、絞り込みをやり直す
