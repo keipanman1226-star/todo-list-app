@@ -6,6 +6,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>To-Do リスト</title>
 
+  <!-- ダークモードの復元（CSSが読み込まれる前に実行し、白画面が一瞬光るのを防ぐ） -->
+  <script>
+    (function () {
+      var savedTheme = localStorage.getItem("todo-list-theme");
+      if (savedTheme === "dark") {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+
   <!-- PWA対応：ホーム画面に追加してアプリのように使えるようにする設定 -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#4a6cf7" />
@@ -19,31 +29,54 @@
 </head>
 <body>
   <div class="app">
-    <!-- ヘッダー部分（タイトル） -->
+    <!-- ヘッダー部分（タイトル + ダークモード切り替え） -->
     <header class="header">
       <h1>📝 To-Do リスト</h1>
+      <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" aria-label="ダークモード切り替え">
+        🌙
+      </button>
     </header>
 
-    <!-- ダッシュボード（進捗状況・今日のタスクをまとめて表示） -->
-    <section class="dashboard">
-      <!-- 進捗カード -->
-      <div id="progress-card" class="card progress-card">
-        <div class="card-title">進捗状況</div>
-        <div class="progress-numbers">
-          <span id="progress-count">0 / 0 件 完了</span>
-          <span id="progress-percent">0%</span>
-        </div>
+    <!-- 統計タイル（総数・未完了・完了・進捗率） -->
+    <section class="stat-grid">
+      <div class="card stat-tile">
+        <div class="stat-label">総タスク数</div>
+        <div id="stat-total" class="stat-value">0</div>
+      </div>
+      <div class="card stat-tile">
+        <div class="stat-label">未完了</div>
+        <div id="stat-todo" class="stat-value stat-value-todo">0</div>
+      </div>
+      <div class="card stat-tile">
+        <div class="stat-label">完了</div>
+        <div id="stat-done" class="stat-value stat-value-done">0</div>
+      </div>
+      <div class="card stat-tile">
+        <div class="stat-label">進捗率</div>
+        <div id="stat-percent" class="stat-value stat-value-accent">0%</div>
         <div class="progress-bar-track">
           <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
         </div>
       </div>
+    </section>
 
+    <!-- ダッシュボード（今日のタスク・カテゴリー別集計） -->
+    <section class="dashboard">
       <!-- 今日のタスクカード -->
       <div id="today-card" class="card today-card">
         <div class="card-title">今日のタスク</div>
         <ul id="today-task-list" class="task-list"></ul>
         <p id="today-empty-message" class="empty-message-small" hidden>
           今日期限のタスクはありません。
+        </p>
+      </div>
+
+      <!-- カテゴリー別集計カード -->
+      <div id="category-breakdown-card" class="card">
+        <div class="card-title">カテゴリー別集計</div>
+        <div id="category-breakdown-list" class="bar-list"></div>
+        <p id="category-breakdown-empty" class="empty-message-small" hidden>
+          タスクがありません。
         </p>
       </div>
     </section>
@@ -72,8 +105,9 @@
 
         <!-- カテゴリーの選択欄 -->
         <select id="category-input" class="category-input">
-          <option value="study">勉強</option>
           <option value="job">就活</option>
+          <option value="study">勉強</option>
+          <option value="university">大学</option>
           <option value="parttime">アルバイト</option>
           <option value="private">プライベート</option>
           <option value="other" selected>その他</option>

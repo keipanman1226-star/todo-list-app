@@ -85,12 +85,19 @@ const emptyMessageEl = document.getElementById("empty-message");
 const searchInput = document.getElementById("search-input");
 const filterButtonsEl = document.getElementById("filter-buttons");
 
-const progressCountEl = document.getElementById("progress-count");
-const progressPercentEl = document.getElementById("progress-percent");
+const statTotalEl = document.getElementById("stat-total");
+const statTodoEl = document.getElementById("stat-todo");
+const statDoneEl = document.getElementById("stat-done");
+const statPercentEl = document.getElementById("stat-percent");
 const progressBarFillEl = document.getElementById("progress-bar-fill");
 
 const todayTaskListEl = document.getElementById("today-task-list");
 const todayEmptyMessageEl = document.getElementById("today-empty-message");
+
+const categoryBreakdownListEl = document.getElementById("category-breakdown-list");
+const categoryBreakdownEmptyEl = document.getElementById("category-breakdown-empty");
+
+const themeToggleBtn = document.getElementById("theme-toggle-btn");
 
 /* ----------------------------------------------------------
    3. 優先度・カテゴリーの並び順や表示ラベルの設定
@@ -102,10 +109,11 @@ const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 // 優先度の表示ラベル（日本語）
 const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
 
-// カテゴリーの表示ラベル（日本語）
+// カテゴリーの表示ラベル（日本語）。オブジェクトのキー順がそのまま表示順になる
 const CATEGORY_LABELS = {
-  study: "勉強",
   job: "就活",
+  study: "勉強",
+  university: "大学",
   parttime: "アルバイト",
   private: "プライベート",
   other: "その他",
@@ -455,16 +463,85 @@ function renderTaskListInto(containerEl, taskArray) {
 }
 
 /**
- * 進捗カード（完了数／総数・進捗率・進捗バー）を更新する
+ * 統計タイル（総タスク数・未完了・完了・進捗率）を更新する
  */
 function renderProgress() {
   const total = tasks.length;
   const doneCount = tasks.filter((task) => task.done).length;
+  const todoCount = total - doneCount;
   const percent = total === 0 ? 0 : Math.round((doneCount / total) * 100);
 
-  progressCountEl.textContent = `${doneCount} / ${total} 件 完了`;
-  progressPercentEl.textContent = `${percent}%`;
+  statTotalEl.textContent = total;
+  statTodoEl.textContent = todoCount;
+  statDoneEl.textContent = doneCount;
+  statPercentEl.textContent = `${percent}%`;
   progressBarFillEl.style.width = `${percent}%`;
+}
+
+/**
+ * 横棒リストを描画する共通部品
+ * items: [{ label: "表示名", count: 件数, percent: 割合(0〜100), colorVar: "CSS変数名" }, ...]
+ * カテゴリー別集計など、「項目ごとの件数を棒グラフ風に見せたい」場面で使い回す
+ */
+function renderBarListInto(containerEl, items) {
+  containerEl.innerHTML = "";
+
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+
+    const labelRow = document.createElement("div");
+    labelRow.className = "bar-label-row";
+
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = item.label;
+
+    const count = document.createElement("span");
+    count.className = "bar-count";
+    count.textContent = `${item.count}件 (${item.percent}%)`;
+
+    labelRow.appendChild(label);
+    labelRow.appendChild(count);
+
+    const track = document.createElement("div");
+    track.className = "bar-track";
+
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = `${item.percent}%`;
+    fill.style.backgroundColor = `var(${item.colorVar})`;
+
+    track.appendChild(fill);
+    row.appendChild(labelRow);
+    row.appendChild(track);
+    containerEl.appendChild(row);
+  });
+}
+
+/**
+ * カテゴリー別集計カードを更新する
+ * （件数が多いカテゴリーから順に表示する。0件のカテゴリーは表示しない）
+ */
+function renderCategoryBreakdown() {
+  const total = tasks.length;
+
+  const items = Object.keys(CATEGORY_LABELS)
+    .map((categoryKey) => {
+      const count = tasks.filter((task) => task.category === categoryKey).length;
+      const percent = total === 0 ? 0 : Math.round((count / total) * 100);
+      return {
+        label: CATEGORY_LABELS[categoryKey],
+        count,
+        percent,
+        colorVar: `--category-${categoryKey}`,
+      };
+    })
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  renderBarListInto(categoryBreakdownListEl, items);
+  categoryBreakdownEmptyEl.hidden = items.length > 0;
 }
 
 /**
@@ -492,10 +569,44 @@ function renderTasks() {
 
   renderProgress();
   renderTodayTasks();
+  renderCategoryBreakdown();
 }
 
 /* ----------------------------------------------------------
-   9. イベント登録・初期表示
+   9. ダークモードの切り替え
+   ---------------------------------------------------------- */
+
+// ダークモードの設定を保存するときの鍵の名前
+const THEME_KEY = "todo-list-theme";
+
+/**
+ * テーマ（ライト／ダーク）を実際に画面へ適用し、localStorageに保存する
+ * ダークモードかどうかは <html> 要素の data-theme 属性で管理している
+ * （index.html側にも、ページ読み込み直後に同じ属性を復元する処理がある）
+ */
+function applyTheme(theme) {
+  if (theme === "dark") {
+    document.documentElement.dataset.theme = "dark";
+    themeToggleBtn.textContent = "☀️";
+  } else {
+    delete document.documentElement.dataset.theme;
+    themeToggleBtn.textContent = "🌙";
+  }
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+// ボタンが押されるたびに、今と逆のテーマに切り替える
+themeToggleBtn.addEventListener("click", () => {
+  const isDark = document.documentElement.dataset.theme === "dark";
+  applyTheme(isDark ? "light" : "dark");
+});
+
+// ページを開いたときのボタンの見た目を、現在のテーマに合わせておく
+// （テーマ自体はindex.html内のインラインスクリプトで既に適用済み）
+applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+
+/* ----------------------------------------------------------
+   10. イベント登録・初期表示
    ---------------------------------------------------------- */
 
 // 検索欄に文字が入力されるたびに、絞り込みをやり直す
